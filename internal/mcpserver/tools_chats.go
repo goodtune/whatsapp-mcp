@@ -25,31 +25,43 @@ func (s *Server) registerContactAndChatTools() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "search_contacts",
 		Description: "Search the caller's WhatsApp contacts by name or phone number.",
+		Title:       "Search contacts",
+		Annotations: readOnlyAnnotations("Search contacts"),
 	}, s.handleSearchContacts)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "list_chats",
 		Description: "List the caller's WhatsApp chats, most recently active first by default.",
+		Title:       "List chats",
+		Annotations: readOnlyAnnotations("List chats"),
 	}, s.handleListChats)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_chat",
 		Description: "Get WhatsApp chat metadata by JID.",
+		Title:       "Get chat",
+		Annotations: readOnlyAnnotations("Get chat"),
 	}, s.handleGetChat)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_direct_chat_by_contact",
 		Description: "Get WhatsApp direct-chat metadata by the contact's phone number.",
+		Title:       "Get direct chat by contact",
+		Annotations: readOnlyAnnotations("Get direct chat by contact"),
 	}, s.handleGetDirectChatByContact)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_contact_chats",
 		Description: "List every WhatsApp chat involving a given contact.",
+		Title:       "Get contact chats",
+		Annotations: readOnlyAnnotations("Get contact chats"),
 	}, s.handleGetContactChats)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_last_interaction",
 		Description: "Get the most recent WhatsApp message involving a contact.",
+		Title:       "Get last interaction",
+		Annotations: readOnlyAnnotations("Get last interaction"),
 	}, s.handleGetLastInteraction)
 }
 

@@ -10,22 +10,30 @@ func (s *Server) registerSendTools() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "send_message",
 		Description: "Send a WhatsApp text message to a person or group. For group chats use the JID.",
+		Title:       "Send message",
+		Annotations: writeAnnotations("Send message", false, false, true),
 	}, s.handleSendMessage)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "send_file",
 		Description: "Send a file (image, raw audio, video, or document) via WhatsApp. For group chats use the JID.",
+		Title:       "Send file",
+		Annotations: writeAnnotations("Send file", false, false, true),
 	}, s.handleSendFile)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name: "send_audio_message",
 		Description: "Send an audio file as a playable WhatsApp voice message. For group chats use the JID. " +
 			"Non-Ogg files are converted with ffmpeg; if that fails because ffmpeg isn't installed, use send_file instead.",
+		Title:       "Send audio message",
+		Annotations: writeAnnotations("Send audio message", false, false, true),
 	}, s.handleSendAudioMessage)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "download_media",
 		Description: "Download media from a WhatsApp message and get the local file path.",
+		Title:       "Download media",
+		Annotations: readOnlyAnnotations("Download media"),
 	}, s.handleDownloadMedia)
 }
 
