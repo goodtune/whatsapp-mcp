@@ -14,14 +14,14 @@ It connects to WhatsApp directly via the WhatsApp Web multidevice API (using the
 - **Multi-tenant.** Any number of people can register accounts on the same server. Each user's chat history and linked WhatsApp device are isolated from every other user's.
 - **Auth.** Registration and login are plain REST endpoints that return a JWT. Every MCP tool call must carry that JWT as `Authorization: Bearer <token>`; the MCP SDK's `auth.RequireBearerToken` middleware verifies it (via a small adapter around our own JWT check) and makes the resulting user id available to every tool handler, scoping each tool call, query, and WhatsApp session to that user.
 - **Linking a WhatsApp number happens over MCP, not a side channel.** After logging in, a user calls the `link_whatsapp` tool, which returns a QR code (as an image, to scan with WhatsApp > Linked Devices) or, if they pass their phone number, an 8-character pairing code (to enter under Linked Devices > Link with phone number). Call it again if the code expires before you've used it.
-- **Storage.** PostgreSQL holds user accounts, the mapping from user to linked WhatsApp JID, WhatsApp's own session/key material (via whatsmeow's `sqlstore`), and chat/message history.
+- **Storage.** PostgreSQL or SQLite holds user accounts, the mapping from user to linked WhatsApp JID, WhatsApp's own session/key material (via whatsmeow's `sqlstore`), and chat/message history.
 
 ## Running it
 
 ### Prerequisites
 
 - Go 1.26+ (only if building from source)
-- PostgreSQL 14+
+- PostgreSQL 14+ (*optional*) — SQLite is used when `DATABASE_URL` is unset or points at a file
 - FFmpeg (*optional*) — only needed for `send_audio_message` to convert arbitrary audio into the Opus/Ogg format WhatsApp voice messages require. Without it, `send_file` still works for raw audio files.
 
 ### With Docker Compose
@@ -36,8 +36,9 @@ This starts Postgres and the server together; the server listens on `:8080`.
 ### From source
 
 ```bash
-export DATABASE_URL="postgres://user:pass@localhost:5432/whatsapp_mcp?sslmode=disable"
 export JWT_SECRET="a long random string"
+# optional: defaults to a SQLite file at store/whatsapp-mcp.db
+export DATABASE_URL="postgres://user:pass@localhost:5432/whatsapp_mcp?sslmode=disable"
 # optional, shown with their defaults:
 export HTTP_ADDR=":8080"
 export MEDIA_DIR="store/media"
@@ -46,6 +47,18 @@ go run ./cmd/whatsapp-mcp
 ```
 
 On startup the server creates its own tables (and whatsmeow's) in the target database automatically — no separate migration step is needed.
+
+### Choosing a database
+
+`DATABASE_URL` picks the database engine:
+
+| `DATABASE_URL` | Engine |
+| --- | --- |
+| unset | SQLite at `store/whatsapp-mcp.db` |
+| `sqlite:path/to/file.db` (or `file:…`, or a bare path ending in `.db`/`.sqlite`/`.sqlite3`) | SQLite |
+| `postgres://…` or `postgresql://…` | PostgreSQL |
+
+SQLite is the easiest choice for one machine and a few users: you need no database server, and the driver is pure Go, so `CGO_ENABLED=0` builds still work. The server turns on foreign keys, WAL mode and a busy timeout automatically. To override one of these, add your own `_pragma=…` option to the URL. Use PostgreSQL when you run many users or more than one server. The two engines do not share data, and the server does not migrate data between them.
 
 ### Exposing it publicly with ngrok
 
@@ -143,16 +156,18 @@ These mirror the tools from the original Python MCP server; see each tool's desc
 ```bash
 go build ./...
 go vet ./...
+go test ./...   # runs against a temporary SQLite database
+TEST_DATABASE_URL="postgres://…/empty_db" go test ./...   # same tests against Postgres
 ```
 
 The project is a single Go module:
 
 - `cmd/whatsapp-mcp` — entrypoint.
 - `internal/config` — environment-based configuration.
-- `internal/db` — Postgres connection and schema migrations for the app's own tables.
+- `internal/db` — Postgres/SQLite connection and per-engine schema migrations for the app's own tables.
 - `internal/auth` — accounts, password hashing, JWT issuing/verification.
 - `internal/httpapi` — the `/api/register`, `/api/login`, `/healthz` REST endpoints.
 - `internal/wa` — per-user WhatsApp client lifecycle (whatsmeow), linking, sending, downloading.
-- `internal/store` — Postgres-backed chat/message repository, scoped by user.
+- `internal/store` — database-backed chat/message repository, scoped by user.
 - `internal/audioconv` — ffmpeg-based audio conversion and Ogg/Opus analysis for voice messages.
 - `internal/mcpserver` — the MCP tool definitions.

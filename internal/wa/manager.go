@@ -1,5 +1,5 @@
 // Package wa manages one whatsmeow WhatsApp client per logged-in user,
-// backed by a shared Postgres connection, and exposes the operations the MCP
+// backed by a shared Postgres or SQLite connection, and exposes the operations the MCP
 // tools need: linking a device (QR or phone-pairing code), sending messages
 // and media, and downloading media.
 package wa
@@ -17,6 +17,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
+	appdb "github.com/goodtune/whatsapp-mcp/internal/db"
 	"github.com/goodtune/whatsapp-mcp/internal/store"
 )
 
@@ -79,9 +80,9 @@ type Manager struct {
 	pending map[int64]*pendingLink
 }
 
-func NewManager(ctx context.Context, db *sql.DB, st *store.Store, mediaDir string) (*Manager, error) {
+func NewManager(ctx context.Context, db *sql.DB, dialect appdb.Dialect, st *store.Store, mediaDir string) (*Manager, error) {
 	logger := waLog.Stdout("WhatsApp", "INFO", true)
-	container := sqlstore.NewWithDB(db, "pgx", logger)
+	container := sqlstore.NewWithDB(db, dialect.DriverName(), logger)
 	if err := container.Upgrade(ctx); err != nil {
 		return nil, fmt.Errorf("failed to prepare whatsmeow schema: %w", err)
 	}

@@ -2,7 +2,8 @@
 // WhatsApp MCP server: users register/log in over a small REST API, link
 // their own WhatsApp number via an MCP tool (QR code or phone-pairing
 // code), and then use the WhatsApp MCP tools against their own account.
-// All state (accounts, WhatsApp sessions, chat history) lives in Postgres.
+// All state (accounts, WhatsApp sessions, chat history) lives in Postgres
+// or SQLite.
 package main
 
 import (
@@ -73,11 +74,12 @@ func run() error {
 		cfg.NgrokAuthtoken = token
 	}
 
-	sqlDB, err := db.Open(cfg.DatabaseURL)
+	sqlDB, dialect, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer sqlDB.Close()
+	log.Printf("using %s database", dialect)
 
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -85,14 +87,14 @@ func run() error {
 		return err
 	}
 
-	if err := db.Migrate(ctx, sqlDB); err != nil {
+	if err := db.Migrate(ctx, sqlDB, dialect); err != nil {
 		return err
 	}
 
 	authService := auth.NewService(sqlDB, cfg.JWTSecret)
 	msgStore := store.New(sqlDB)
 
-	waManager, err := wa.NewManager(ctx, sqlDB, msgStore, cfg.MediaDir)
+	waManager, err := wa.NewManager(ctx, sqlDB, dialect, msgStore, cfg.MediaDir)
 	if err != nil {
 		return err
 	}

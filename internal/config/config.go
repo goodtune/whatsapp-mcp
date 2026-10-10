@@ -7,8 +7,10 @@ import (
 )
 
 type Config struct {
-	// DatabaseURL is a Postgres connection string, e.g.
-	// postgres://user:pass@host:5432/whatsapp_mcp?sslmode=disable
+	// DatabaseURL selects the database: a Postgres connection string, e.g.
+	// postgres://user:pass@host:5432/whatsapp_mcp?sslmode=disable, or a
+	// SQLite file, e.g. sqlite:store/whatsapp-mcp.db. Defaults to SQLite at
+	// store/whatsapp-mcp.db when unset.
 	DatabaseURL string
 	// JWTSecret signs and verifies session tokens issued at login.
 	JWTSecret string
@@ -38,7 +40,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		DatabaseURL:        getEnvDefault("DATABASE_URL", "sqlite:store/whatsapp-mcp.db"),
 		JWTSecret:          os.Getenv("JWT_SECRET"),
 		HTTPAddr:           getEnvDefault("HTTP_ADDR", ":8080"),
 		MediaDir:           getEnvDefault("MEDIA_DIR", "store/media"),
@@ -48,9 +50,6 @@ func Load() (Config, error) {
 		NgrokBasicAuthPass: os.Getenv("NGROK_BASIC_AUTH_PASS"),
 	}
 
-	if cfg.DatabaseURL == "" {
-		return cfg, fmt.Errorf("DATABASE_URL must be set, e.g. postgres://user:pass@localhost:5432/whatsapp_mcp?sslmode=disable")
-	}
 	if cfg.JWTSecret == "" {
 		return cfg, fmt.Errorf("JWT_SECRET must be set to a long random string")
 	}

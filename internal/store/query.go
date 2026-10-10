@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type ListMessagesFilter struct {
@@ -32,11 +33,19 @@ func (s *Store) ListMessages(ctx context.Context, userID int64, f ListMessagesFi
 	args := []any{userID}
 
 	if f.After != nil && *f.After != "" {
-		args = append(args, *f.After)
+		t, err := parseTimestamp(*f.After)
+		if err != nil {
+			return nil, fmt.Errorf("invalid after: %w", err)
+		}
+		args = append(args, t)
 		clauses = append(clauses, fmt.Sprintf("messages.timestamp > $%d", len(args)))
 	}
 	if f.Before != nil && *f.Before != "" {
-		args = append(args, *f.Before)
+		t, err := parseTimestamp(*f.Before)
+		if err != nil {
+			return nil, fmt.Errorf("invalid before: %w", err)
+		}
+		args = append(args, t)
 		clauses = append(clauses, fmt.Sprintf("messages.timestamp < $%d", len(args)))
 	}
 	if f.SenderPhoneNumber != nil && *f.SenderPhoneNumber != "" {
@@ -85,6 +94,32 @@ func (s *Store) ListMessages(ctx context.Context, userID int64, f ListMessagesFi
 		result = append(result, m)
 	}
 	return result, rows.Err()
+}
+
+// timestampLayouts are the ISO-8601 forms accepted for the after/before
+// filters. Times without a UTC offset are taken to be UTC.
+var timestampLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999Z07:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02T15:04Z07:00",
+	"2006-01-02T15:04",
+	"2006-01-02 15:04",
+	"2006-01-02",
+}
+
+// parseTimestamp parses a filter timestamp into a time.Time, so it is bound
+// as a real timestamp rather than compared as text — required for SQLite,
+// which stores timestamps as text.
+func parseTimestamp(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	for _, layout := range timestampLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("%q is not an ISO-8601 timestamp (e.g. 2006-01-02T15:04:05Z)", s)
 }
 
 // GetMessageContext returns a message along with the messages immediately

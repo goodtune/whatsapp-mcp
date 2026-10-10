@@ -145,5 +145,8 @@ func (s *Service) VerifyToken(tokenString string) (userID int64, expiresAt time.
 }
 
 func isUniqueViolation(err error) bool {
-	return strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate key")
+	// Postgres: "duplicate key value violates unique constraint";
+	// SQLite: "UNIQUE constraint failed".
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate key")
 }

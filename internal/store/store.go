@@ -1,4 +1,4 @@
-// Package store is the Postgres-backed repository for chat and message
+// Package store is the database-backed (Postgres or SQLite) repository for chat and message
 // history. Every row is scoped by user_id so that each logged-in user only
 // ever sees their own WhatsApp data.
 package store
