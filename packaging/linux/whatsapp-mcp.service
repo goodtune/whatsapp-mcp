@@ -16,7 +16,7 @@ Type=simple
 # JWT_SECRET, GITHUB_ALLOWED_USERS, NGROK_DOMAIN etc. (see the README) in
 # ~/.config/whatsapp-mcp/env, mode 0600: it holds JWT_SECRET.
 # WHATSAPP_MCP_ARGS passes command-line flags, e.g.
-#   WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --github-dotvault whatsapp-mcp/github
+#   WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --ngrok-dotvault-secret whatsapp-mcp/ngrok --github-dotvault whatsapp-mcp/github
 EnvironmentFile=-/etc/sysconfig/whatsapp-mcp
 EnvironmentFile=-%h/.config/whatsapp-mcp/env
 ExecStart=/usr/bin/whatsapp-mcp $WHATSAPP_MCP_ARGS

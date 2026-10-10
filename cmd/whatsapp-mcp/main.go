@@ -58,9 +58,12 @@ func run() error {
 	// colliding with whatever that dependency graph registers.
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	ngrokDotvaultField := fs.String("ngrok-dotvault", "",
-		"Read the ngrok authtoken from this field of the caller's dotvault \"ngrok\" secret "+
-			"(service \"ngrok\"), instead of NGROK_AUTHTOKEN. Requires a cached dotvault login "+
+		"Read the ngrok authtoken from this field of the caller's dotvault secret named by "+
+			"--ngrok-dotvault-secret, instead of NGROK_AUTHTOKEN. Requires a cached dotvault login "+
 			"(run `dotvault login` first); overrides NGROK_AUTHTOKEN when both are set.")
+	ngrokDotvaultSecret := fs.String("ngrok-dotvault-secret", "ngrok",
+		"The dotvault secret --ngrok-dotvault reads from, e.g. \"whatsapp-mcp/ngrok\" for "+
+			"kv/users/<you>/whatsapp-mcp/ngrok.")
 	githubDotvaultService := fs.String("github-dotvault", "",
 		"Read the GitHub OAuth app's credentials from the \"client_id\" and \"client_secret\" fields of "+
 			"this dotvault secret, instead of GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET. Requires a cached "+
@@ -88,7 +91,7 @@ func run() error {
 			return err
 		}
 		if *ngrokDotvaultField != "" {
-			token, err := readDotvault(ctx, vault, "ngrok", *ngrokDotvaultField)
+			token, err := readDotvault(ctx, vault, *ngrokDotvaultSecret, *ngrokDotvaultField)
 			if err != nil {
 				return err
 			}
