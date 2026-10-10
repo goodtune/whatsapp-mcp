@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,15 +51,14 @@ func TestStore(t *testing.T) {
 	ctx := context.Background()
 	st, authSvc := openTestDB(t)
 
-	user, err := authSvc.Register(ctx, "alice", "password123")
+	user, err := authSvc.UpsertGitHubUser(ctx, 1001, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := authSvc.Register(ctx, "alice", "password123"); !errors.Is(err, auth.ErrUsernameTaken) {
-		t.Fatalf("duplicate register: got %v, want ErrUsernameTaken", err)
-	}
-	if _, err := authSvc.Authenticate(ctx, "alice", "password123"); err != nil {
-		t.Fatal(err)
+	// Signing in again (after a GitHub rename) finds the same account.
+	again, err := authSvc.UpsertGitHubUser(ctx, 1001, "alice-renamed")
+	if err != nil || again.ID != user.ID {
+		t.Fatalf("second sign-in = %+v, %v; want user %d", again, err, user.ID)
 	}
 
 	// Non-UTC input times must still order and filter correctly.
