@@ -104,12 +104,20 @@ func (m *Manager) DownloadMedia(ctx context.Context, userID int64, messageID, ch
 
 // extractDirectPathFromURL recovers the WhatsApp media server's direct path
 // from a previously-stored media URL (e.g.
-// "https://mmg.whatsapp.net/v/t62.../file.enc?ccb=...").
+// "https://mmg.whatsapp.net/v/t62.../file.enc?ccb=...&oh=...&oe=...").
+//
+// The query string must be kept, not stripped: whatsmeow's Download builds
+// the retry URL as host+directPath+"&hash=...", appending straight onto
+// whatever GetDirectPath() returns with no "?" of its own. That only forms
+// a valid query string because directPath is expected to still carry its
+// own "?ccb=...&oh=...&oe=..." — oh/oe are the object hash and expiry that
+// authorize the signed request, so a directPath with the query cut off is
+// missing credentials the CDN needs and gets rejected with 403, regardless
+// of which host ends up serving it.
 func extractDirectPathFromURL(url string) string {
 	parts := strings.SplitN(url, ".net/", 2)
 	if len(parts) < 2 {
 		return url
 	}
-	pathPart := strings.SplitN(parts[1], "?", 2)[0]
-	return "/" + pathPart
+	return "/" + parts[1]
 }
