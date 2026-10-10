@@ -3,10 +3,10 @@ Description=whatsapp-mcp — multi-tenant WhatsApp MCP server
 Documentation=https://github.com/goodtune/whatsapp-mcp
 After=network-online.target
 
-# Per-user service: the --ngrok-dotvault/--github-dotvault flags read secrets
-# with this user's cached dotvault login (~/.dotvault-token), and the
-# database, media and WhatsApp session keys live in this user's state
-# directory. As root it would do all of that as root.
+# Per-user service: the --*-dotvault* flags read secrets with this user's
+# cached dotvault login (~/.dotvault-token), and the database, media and
+# WhatsApp session keys live in this user's state directory. As root it
+# would do all of that as root.
 ConditionUser=!root
 
 [Service]
@@ -16,7 +16,7 @@ Type=simple
 # JWT_SECRET, GITHUB_ALLOWED_USERS, NGROK_DOMAIN etc. (see the README) in
 # ~/.config/whatsapp-mcp/env, mode 0600: it holds JWT_SECRET.
 # WHATSAPP_MCP_ARGS passes command-line flags, e.g.
-#   WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --github-dotvault whatsapp-mcp/github
+#   WHATSAPP_MCP_ARGS=--ngrok-dotvault whatsapp-mcp/ngrok/authtoken --github-dotvault-client-id whatsapp-mcp/github/client_id --github-dotvault-client-secret whatsapp-mcp/github/client_secret
 EnvironmentFile=-/etc/sysconfig/whatsapp-mcp
 EnvironmentFile=-%h/.config/whatsapp-mcp/env
 ExecStart=/usr/bin/whatsapp-mcp $WHATSAPP_MCP_ARGS
