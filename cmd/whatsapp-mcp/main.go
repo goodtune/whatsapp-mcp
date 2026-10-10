@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -71,6 +72,11 @@ func run() error {
 		"Read the GitHub OAuth app's client secret from dotvault instead of GITHUB_CLIENT_SECRET, "+
 			"given as \"<secret>/<field>\" (e.g. \"whatsapp-mcp/github/client_secret\"). Requires a "+
 			"cached dotvault login; overrides GITHUB_CLIENT_SECRET when both are set.")
+	dotvaultConfig := fs.String("dotvault-config", "",
+		"Path to dotvault's config file, for a dotvault daemon that was started with its own "+
+			"--config pointing somewhere other than the OS default (e.g. \"~/.config/dotvault/config.yaml\"). "+
+			"Only read when a --*-dotvault* flag is set; defaults to dotvault's standard system path "+
+			"(dotvault.DefaultConfigPath()) when unset.")
 	showVersion := fs.Bool("version", false, "Print the version and exit.")
 	fs.Parse(os.Args[1:])
 
@@ -89,7 +95,7 @@ func run() error {
 	}
 
 	if *ngrokDotvault != "" || *githubDotvaultClientID != "" || *githubDotvaultClientSecret != "" {
-		vault, err := dotvaultClient(ctx)
+		vault, err := dotvaultClient(ctx, *dotvaultConfig)
 		if err != nil {
 			return err
 		}
@@ -240,6 +246,14 @@ func listen(ctx context.Context, cfg config.Config) (net.Listener, string, error
 // (github.com/goodtune/dotvault), for reading secrets such as the ngrok
 // authtoken or the GitHub OAuth app credentials.
 //
+// configPath, if non-empty, overrides dotvault's own config discovery: a
+// dotvault daemon started with its own --config pointing somewhere other
+// than the OS default (as the "run as a per-user agent" setups in the
+// README do, rather than installing a system-wide config) reads its secret
+// paths from that file, not the default one, and this process has no way to
+// discover that override except being told. An empty configPath falls back
+// to dotvault.DefaultConfigPath(), the OS-standard location.
+//
 // This runs inside a long-lived daemon, so it only ever uses
 // AuthenticateCached: dotvault's own client docs are explicit that the
 // interactive Authenticate/Login entry points must not be called from a
@@ -247,8 +261,16 @@ func listen(ctx context.Context, cfg config.Config) (net.Listener, string, error
 // prompt). A missing cached token is therefore an operator error (run
 // `dotvault login` first), not something this process should try to fix by
 // prompting.
-func dotvaultClient(ctx context.Context) (*dotvault.Client, error) {
-	cfg, err := dotvault.LoadConfig(dotvault.DefaultConfigPath())
+func dotvaultClient(ctx context.Context, configPath string) (*dotvault.Client, error) {
+	if configPath == "" {
+		configPath = dotvault.DefaultConfigPath()
+	} else if expanded, err := expandHome(configPath); err != nil {
+		return nil, fmt.Errorf("--dotvault-config: %w", err)
+	} else {
+		configPath = expanded
+	}
+
+	cfg, err := dotvault.LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load dotvault config: %w", err)
 	}
@@ -303,4 +325,24 @@ func readDotvaultRef(ctx context.Context, cli *dotvault.Client, ref string) (str
 		return "", fmt.Errorf("%q must be \"<secret>/<field>\", e.g. \"whatsapp-mcp/ngrok/authtoken\"", ref)
 	}
 	return readDotvault(ctx, cli, ref[:i], ref[i+1:])
+}
+
+// expandHome expands a leading "~" or "~/..." in path to the caller's home
+// directory, as a shell would. --dotvault-config is read by this process
+// directly, with no shell in between to do that expansion (e.g. when set
+// from a launchd/systemd unit's literal argument list), so a path copied
+// from a shell prompt with a leading "~" would otherwise be passed to
+// dotvault.LoadConfig verbatim and fail with a confusing "no such file".
+func expandHome(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve home directory for %q: %w", path, err)
+	}
+	if path == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, path[2:]), nil
 }
