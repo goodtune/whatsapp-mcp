@@ -57,7 +57,7 @@ cat > ~/.config/whatsapp-mcp/env <<'ENV'
 JWT_SECRET=<a long random string>
 GITHUB_ALLOWED_USERS=your-github-login
 NGROK_DOMAIN=your-domain.ngrok-free.app
-WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --ngrok-dotvault-secret whatsapp-mcp/ngrok --github-dotvault whatsapp-mcp/github
+WHATSAPP_MCP_ARGS=--ngrok-dotvault whatsapp-mcp/ngrok/authtoken --github-dotvault-client-id whatsapp-mcp/github/client_id --github-dotvault-client-secret whatsapp-mcp/github/client_secret
 ENV
 chmod 600 ~/.config/whatsapp-mcp/env
 
@@ -130,21 +130,23 @@ go run ./cmd/whatsapp-mcp
 
 #### Getting secrets from dotvault instead of env vars
 
-If you keep secrets in [dotvault](https://github.com/goodtune/dotvault) rather than plain environment variables, pass `--ngrok-dotvault <field>` instead of setting `NGROK_AUTHTOKEN`:
+If you keep secrets in [dotvault](https://github.com/goodtune/dotvault) rather than plain environment variables, pass `--ngrok-dotvault <secret>/<field>` instead of setting `NGROK_AUTHTOKEN`:
 
 ```bash
 dotvault login   # once, interactively — see dotvault's own docs
-go run ./cmd/whatsapp-mcp --ngrok-dotvault authtoken
+go run ./cmd/whatsapp-mcp --ngrok-dotvault whatsapp-mcp/ngrok/authtoken
 ```
 
-This reads the `authtoken` field of your dotvault `ngrok` secret (`kv/users/<you>/ngrok`, field `authtoken`) using a cached login — it never opens a browser or prompts, so it's safe to run unattended (e.g. under systemd), but it does mean `dotvault login` must already have a usable cached token (or peer-socket/certificate auth configured) before this process starts. It overrides `NGROK_AUTHTOKEN` if both are set. `NGROK_DOMAIN` is unaffected and still comes from the environment.
+This reads the `authtoken` field of your dotvault `whatsapp-mcp/ngrok` secret (`kv/users/<you>/whatsapp-mcp/ngrok`, field `authtoken`) using a cached login — it never opens a browser or prompts, so it's safe to run unattended (e.g. under systemd), but it does mean `dotvault login` must already have a usable cached token (or peer-socket/certificate auth configured) before this process starts. It overrides `NGROK_AUTHTOKEN` if both are set. `NGROK_DOMAIN` is unaffected and still comes from the environment.
 
-To read the authtoken from a different secret, name it with `--ngrok-dotvault-secret`. For example, `--ngrok-dotvault authtoken --ngrok-dotvault-secret whatsapp-mcp/ngrok` reads the `authtoken` field of `kv/users/<you>/whatsapp-mcp/ngrok`.
+Every `--*-dotvault*` flag takes the full `<secret>/<field>` path and nothing is defaulted: the secret itself can live anywhere (its path can have as many segments as you like; only the last one is the field), so there's no built-in guess to get wrong or to silently fall back to. `--ngrok-dotvault authtoken` on its own is rejected — write out the secret it comes from.
 
-In the same way, `--github-dotvault <secret>` reads the GitHub OAuth app's credentials from the `client_id` and `client_secret` fields of that dotvault secret, instead of `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`:
+In the same way, `--github-dotvault-client-id <secret>/<field>` and `--github-dotvault-client-secret <secret>/<field>` read the GitHub OAuth app's credentials from dotvault, instead of `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`:
 
 ```bash
-go run ./cmd/whatsapp-mcp --ngrok-dotvault authtoken --github-dotvault github-oauth
+go run ./cmd/whatsapp-mcp --ngrok-dotvault whatsapp-mcp/ngrok/authtoken \
+  --github-dotvault-client-id whatsapp-mcp/github/client_id \
+  --github-dotvault-client-secret whatsapp-mcp/github/client_secret
 ```
 
 Pulling in dotvault's client adds a meaningful amount to this binary (its auth layer links in TPM/confidential-computing attestation libraries several layers down, regardless of whether you ever use those auth methods) — expect roughly +15-20MB over a build without dotvault. If that's unwelcome and you don't need dotvault, just use the environment variables directly.

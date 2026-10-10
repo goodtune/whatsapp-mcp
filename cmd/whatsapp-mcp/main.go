@@ -57,17 +57,20 @@ func run() error {
 	// --help stays limited to flags we actually support, and avoids
 	// colliding with whatever that dependency graph registers.
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	ngrokDotvaultField := fs.String("ngrok-dotvault", "",
-		"Read the ngrok authtoken from this field of the caller's dotvault secret named by "+
-			"--ngrok-dotvault-secret, instead of NGROK_AUTHTOKEN. Requires a cached dotvault login "+
-			"(run `dotvault login` first); overrides NGROK_AUTHTOKEN when both are set.")
-	ngrokDotvaultSecret := fs.String("ngrok-dotvault-secret", "ngrok",
-		"The dotvault secret --ngrok-dotvault reads from, e.g. \"whatsapp-mcp/ngrok\" for "+
-			"kv/users/<you>/whatsapp-mcp/ngrok.")
-	githubDotvaultService := fs.String("github-dotvault", "",
-		"Read the GitHub OAuth app's credentials from the \"client_id\" and \"client_secret\" fields of "+
-			"this dotvault secret, instead of GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET. Requires a cached "+
-			"dotvault login; overrides those variables when both are set.")
+	ngrokDotvault := fs.String("ngrok-dotvault", "",
+		"Read the ngrok authtoken from dotvault instead of NGROK_AUTHTOKEN, given as "+
+			"\"<secret>/<field>\" (e.g. \"whatsapp-mcp/ngrok/authtoken\" for the authtoken field "+
+			"of kv/users/<you>/whatsapp-mcp/ngrok — there is no default secret, so the full path "+
+			"is always required). Requires a cached dotvault login (run \"dotvault login\" first); "+
+			"overrides NGROK_AUTHTOKEN when both are set.")
+	githubDotvaultClientID := fs.String("github-dotvault-client-id", "",
+		"Read the GitHub OAuth app's client ID from dotvault instead of GITHUB_CLIENT_ID, given "+
+			"as \"<secret>/<field>\" (e.g. \"whatsapp-mcp/github/client_id\"). Requires a cached "+
+			"dotvault login; overrides GITHUB_CLIENT_ID when both are set.")
+	githubDotvaultClientSecret := fs.String("github-dotvault-client-secret", "",
+		"Read the GitHub OAuth app's client secret from dotvault instead of GITHUB_CLIENT_SECRET, "+
+			"given as \"<secret>/<field>\" (e.g. \"whatsapp-mcp/github/client_secret\"). Requires a "+
+			"cached dotvault login; overrides GITHUB_CLIENT_SECRET when both are set.")
 	showVersion := fs.Bool("version", false, "Print the version and exit.")
 	fs.Parse(os.Args[1:])
 
@@ -85,27 +88,29 @@ func run() error {
 		return err
 	}
 
-	if *ngrokDotvaultField != "" || *githubDotvaultService != "" {
+	if *ngrokDotvault != "" || *githubDotvaultClientID != "" || *githubDotvaultClientSecret != "" {
 		vault, err := dotvaultClient(ctx)
 		if err != nil {
 			return err
 		}
-		if *ngrokDotvaultField != "" {
-			token, err := readDotvault(ctx, vault, *ngrokDotvaultSecret, *ngrokDotvaultField)
+		if *ngrokDotvault != "" {
+			token, err := readDotvaultRef(ctx, vault, *ngrokDotvault)
 			if err != nil {
-				return err
+				return fmt.Errorf("--ngrok-dotvault: %w", err)
 			}
 			if cfg.NgrokAuthtoken != "" {
 				log.Printf("--ngrok-dotvault overrides NGROK_AUTHTOKEN")
 			}
 			cfg.NgrokAuthtoken = token
 		}
-		if *githubDotvaultService != "" {
-			if cfg.GitHubClientID, err = readDotvault(ctx, vault, *githubDotvaultService, "client_id"); err != nil {
-				return err
+		if *githubDotvaultClientID != "" {
+			if cfg.GitHubClientID, err = readDotvaultRef(ctx, vault, *githubDotvaultClientID); err != nil {
+				return fmt.Errorf("--github-dotvault-client-id: %w", err)
 			}
-			if cfg.GitHubClientSecret, err = readDotvault(ctx, vault, *githubDotvaultService, "client_secret"); err != nil {
-				return err
+		}
+		if *githubDotvaultClientSecret != "" {
+			if cfg.GitHubClientSecret, err = readDotvaultRef(ctx, vault, *githubDotvaultClientSecret); err != nil {
+				return fmt.Errorf("--github-dotvault-client-secret: %w", err)
 			}
 		}
 	}
@@ -278,4 +283,24 @@ func readDotvault(ctx context.Context, cli *dotvault.Client, service, field stri
 		return "", fmt.Errorf("dotvault: no \"%s\" field under the \"%s\" secret for your identity; enroll it first", field, service)
 	}
 	return value, nil
+}
+
+// readDotvaultRef reads the dotvault field named by ref, "<secret>/<field>"
+// (e.g. "whatsapp-mcp/ngrok/authtoken"). Everything up to the last slash is
+// the secret path — which can itself contain slashes, as in that example —
+// and the final segment is the field, which never does.
+//
+// Every --*-dotvault* flag takes a ref rather than a field name with a
+// secret name defaulted elsewhere: a default secret (e.g. always "ngrok")
+// is a silent assumption about where operators keep that credential, and
+// it's wrong as soon as a secret holds more than one app's worth of
+// tokens. Spelling out the full path on every flag means a typo'd or
+// unenrolled secret fails loudly, instead of this process quietly reading
+// whatever happens to live at the assumed default.
+func readDotvaultRef(ctx context.Context, cli *dotvault.Client, ref string) (string, error) {
+	i := strings.LastIndex(ref, "/")
+	if i <= 0 || i == len(ref)-1 {
+		return "", fmt.Errorf("%q must be \"<secret>/<field>\", e.g. \"whatsapp-mcp/ngrok/authtoken\"", ref)
+	}
+	return readDotvault(ctx, cli, ref[:i], ref[i+1:])
 }
