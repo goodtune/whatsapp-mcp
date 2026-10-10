@@ -7,14 +7,18 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	dotvault "github.com/goodtune/dotvault/client"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.ngrok.com/ngrok"
@@ -36,12 +40,37 @@ func main() {
 }
 
 func run() error {
+	// A private FlagSet, not the flag.CommandLine default: the dotvault
+	// client pulls in Google's TPM/confidential-computing attestation
+	// libraries several layers down, and those register their own global
+	// flags (-sev_guest_device_path and the like) on flag.CommandLine via
+	// init(). Keeping our own flag(s) on a separate FlagSet means our
+	// --help stays limited to flags we actually support, and avoids
+	// colliding with whatever that dependency graph registers.
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	ngrokDotvaultField := fs.String("ngrok-dotvault", "",
+		"Read the ngrok authtoken from this field of the caller's dotvault \"ngrok\" secret "+
+			"(service \"ngrok\"), instead of NGROK_AUTHTOKEN. Requires a cached dotvault login "+
+			"(run `dotvault login` first); overrides NGROK_AUTHTOKEN when both are set.")
+	fs.Parse(os.Args[1:])
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	cfg, err := config.Load()
 	if err != nil {
 		return err
+	}
+
+	if *ngrokDotvaultField != "" {
+		token, err := ngrokAuthtokenFromDotvault(ctx, *ngrokDotvaultField)
+		if err != nil {
+			return err
+		}
+		if cfg.NgrokAuthtoken != "" {
+			log.Printf("--ngrok-dotvault overrides NGROK_AUTHTOKEN")
+		}
+		cfg.NgrokAuthtoken = token
 	}
 
 	sqlDB, err := db.Open(cfg.DatabaseURL)
@@ -140,4 +169,49 @@ func listen(ctx context.Context, cfg config.Config) (net.Listener, error) {
 	}
 	log.Printf("whatsapp-mcp listening on public ngrok tunnel: %s", tunnel.URL())
 	return tunnel, nil
+}
+
+// ngrokAuthtokenFromDotvault reads the ngrok authtoken from the caller's
+// dotvault store (github.com/goodtune/dotvault), under the "ngrok" service
+// and the given field, e.g. field "authtoken" reads kv/users/<you>/ngrok's
+// "authtoken" field.
+//
+// This runs inside a long-lived daemon, so it only ever uses
+// AuthenticateCached: dotvault's own client docs are explicit that the
+// interactive Authenticate/Login entry points must not be called from a
+// non-interactive service (they can open a browser or block on a terminal
+// prompt). A missing cached token is therefore an operator error (run
+// `dotvault login` first), not something this process should try to fix by
+// prompting.
+func ngrokAuthtokenFromDotvault(ctx context.Context, field string) (string, error) {
+	cfg, err := dotvault.LoadConfig(dotvault.DefaultConfigPath())
+	if err != nil {
+		return "", fmt.Errorf("failed to load dotvault config: %w", err)
+	}
+
+	cli, err := dotvault.New(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create dotvault client: %w", err)
+	}
+
+	if err := cli.AuthenticateCached(ctx); err != nil {
+		switch {
+		case errors.Is(err, dotvault.ErrLoginRequired):
+			return "", fmt.Errorf("dotvault: no cached login; run `dotvault login` and retry: %w", err)
+		case errors.Is(err, dotvault.ErrUnreachable):
+			return "", fmt.Errorf("dotvault: vault unreachable: %w", err)
+		default:
+			return "", fmt.Errorf("dotvault: authentication failed: %w", err)
+		}
+	}
+
+	token, found, err := cli.ReadUserSecret(ctx, "ngrok", field)
+	if err != nil {
+		return "", fmt.Errorf("dotvault: failed to read ngrok/%s: %w", field, err)
+	}
+	if !found {
+		return "", fmt.Errorf("dotvault: no \"%s\" field under the \"ngrok\" secret for your identity; enroll it first", field)
+	}
+
+	return token, nil
 }

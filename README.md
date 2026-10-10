@@ -66,6 +66,19 @@ go run ./cmd/whatsapp-mcp
 
 `HTTP_ADDR` is ignored while `NGROK_AUTHTOKEN` is set. With Docker Compose, set the same variables in `.env` instead (see `.env.example`); the `ports:` mapping becomes unnecessary (it's harmless to leave it either way).
 
+#### Getting the authtoken from dotvault instead of an env var
+
+If you keep secrets in [dotvault](https://github.com/goodtune/dotvault) rather than plain environment variables, pass `--ngrok-dotvault <field>` instead of setting `NGROK_AUTHTOKEN`:
+
+```bash
+dotvault login   # once, interactively — see dotvault's own docs
+go run ./cmd/whatsapp-mcp --ngrok-dotvault authtoken
+```
+
+This reads the `authtoken` field of your dotvault `ngrok` secret (`kv/users/<you>/ngrok`, field `authtoken`) using a cached login — it never opens a browser or prompts, so it's safe to run unattended (e.g. under systemd), but it does mean `dotvault login` must already have a usable cached token (or peer-socket/certificate auth configured) before this process starts. It overrides `NGROK_AUTHTOKEN` if both are set. `NGROK_DOMAIN` and the basic-auth variables above are unaffected and still come from the environment.
+
+Pulling in dotvault's client adds a meaningful amount to this binary (its auth layer links in TPM/confidential-computing attestation libraries several layers down, regardless of whether you ever use those auth methods) — expect roughly +15-20MB over a build without `--ngrok-dotvault`. If that's unwelcome and you don't need dotvault, just use `NGROK_AUTHTOKEN` directly.
+
 ## Connecting a client
 
 ### 1. Register and log in
