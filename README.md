@@ -149,6 +149,15 @@ go run ./cmd/whatsapp-mcp --ngrok-dotvault whatsapp-mcp/ngrok/authtoken \
   --github-dotvault-client-secret whatsapp-mcp/github/client_secret
 ```
 
+All of this reads dotvault's own config from its OS-standard location (`dotvault.DefaultConfigPath()` — see the dotvault client docs) to find the Vault address and auth method. If your dotvault daemon runs with its own `--config` pointing somewhere else (for example a per-user agent started with `dotvault run --config ~/.config/dotvault/config.yaml`, rather than a system-wide install), pass the same path with `--dotvault-config` so this process reads the matching one:
+
+```bash
+go run ./cmd/whatsapp-mcp --dotvault-config ~/.config/dotvault/config.yaml \
+  --ngrok-dotvault whatsapp-mcp/ngrok/authtoken \
+  --github-dotvault-client-id whatsapp-mcp/github/client_id \
+  --github-dotvault-client-secret whatsapp-mcp/github/client_secret
+```
+
 Pulling in dotvault's client adds a meaningful amount to this binary (its auth layer links in TPM/confidential-computing attestation libraries several layers down, regardless of whether you ever use those auth methods) — expect roughly +15-20MB over a build without dotvault. If that's unwelcome and you don't need dotvault, just use the environment variables directly.
 
 ## Connecting a client
