@@ -25,31 +25,43 @@ func (s *Server) registerContactAndChatTools() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "search_contacts",
 		Description: "Search the caller's WhatsApp contacts by name or phone number.",
+		Title:       "Search contacts",
+		Annotations: readOnlyAnnotations("Search contacts"),
 	}, s.handleSearchContacts)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "list_chats",
 		Description: "List the caller's WhatsApp chats, most recently active first by default.",
+		Title:       "List chats",
+		Annotations: readOnlyAnnotations("List chats"),
 	}, s.handleListChats)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_chat",
 		Description: "Get WhatsApp chat metadata by JID.",
+		Title:       "Get chat",
+		Annotations: readOnlyAnnotations("Get chat"),
 	}, s.handleGetChat)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_direct_chat_by_contact",
 		Description: "Get WhatsApp direct-chat metadata by the contact's phone number.",
+		Title:       "Get direct chat by contact",
+		Annotations: readOnlyAnnotations("Get direct chat by contact"),
 	}, s.handleGetDirectChatByContact)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_contact_chats",
 		Description: "List every WhatsApp chat involving a given contact.",
+		Title:       "Get contact chats",
+		Annotations: readOnlyAnnotations("Get contact chats"),
 	}, s.handleGetContactChats)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_last_interaction",
 		Description: "Get the most recent WhatsApp message involving a contact.",
+		Title:       "Get last interaction",
+		Annotations: readOnlyAnnotations("Get last interaction"),
 	}, s.handleGetLastInteraction)
 }
 
@@ -57,17 +69,17 @@ type searchContactsInput struct {
 	Query string `json:"query" jsonschema:"Search term to match against contact names or phone numbers"`
 }
 
-func (s *Server) handleSearchContacts(ctx context.Context, _ *mcp.CallToolRequest, input searchContactsInput) (*mcp.CallToolResult, []contactDTO, error) {
+func (s *Server) handleSearchContacts(ctx context.Context, _ *mcp.CallToolRequest, input searchContactsInput) (*mcp.CallToolResult, contactsDTO, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error()), contactsDTO{}, nil
 	}
 
 	contacts, err := s.store.SearchContacts(ctx, userID, input.Query)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to search contacts: %w", err)
+		return nil, contactsDTO{}, fmt.Errorf("failed to search contacts: %w", err)
 	}
-	return nil, newContactDTOs(contacts), nil
+	return nil, contactsDTO{Contacts: newContactDTOs(contacts)}, nil
 }
 
 type listChatsInput struct {
@@ -78,19 +90,19 @@ type listChatsInput struct {
 	SortBy             string `json:"sort_by,omitempty" jsonschema:"Either 'last_active' or 'name' (default last_active)"`
 }
 
-func (s *Server) handleListChats(ctx context.Context, _ *mcp.CallToolRequest, input listChatsInput) (*mcp.CallToolResult, []chatDTO, error) {
+func (s *Server) handleListChats(ctx context.Context, _ *mcp.CallToolRequest, input listChatsInput) (*mcp.CallToolResult, chatsDTO, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error()), chatsDTO{}, nil
 	}
 
 	chats, err := s.store.ListChats(ctx, userID, input.Query,
 		intOrDefault(input.Limit, 20), intOrDefault(input.Page, 0),
 		boolOrDefault(input.IncludeLastMessage, true), input.SortBy == "name")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list chats: %w", err)
+		return nil, chatsDTO{}, fmt.Errorf("failed to list chats: %w", err)
 	}
-	return nil, newChatDTOs(chats), nil
+	return nil, chatsDTO{Chats: newChatDTOs(chats)}, nil
 }
 
 type getChatInput struct {
@@ -142,17 +154,17 @@ type getContactChatsInput struct {
 	Page  *int   `json:"page,omitempty" jsonschema:"Page number for pagination (default 0)"`
 }
 
-func (s *Server) handleGetContactChats(ctx context.Context, _ *mcp.CallToolRequest, input getContactChatsInput) (*mcp.CallToolResult, []chatDTO, error) {
+func (s *Server) handleGetContactChats(ctx context.Context, _ *mcp.CallToolRequest, input getContactChatsInput) (*mcp.CallToolResult, chatsDTO, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error()), chatsDTO{}, nil
 	}
 
 	chats, err := s.store.GetContactChats(ctx, userID, input.JID, intOrDefault(input.Limit, 20), intOrDefault(input.Page, 0))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get contact chats: %w", err)
+		return nil, chatsDTO{}, fmt.Errorf("failed to get contact chats: %w", err)
 	}
-	return nil, newChatDTOs(chats), nil
+	return nil, chatsDTO{Chats: newChatDTOs(chats)}, nil
 }
 
 type getLastInteractionInput struct {

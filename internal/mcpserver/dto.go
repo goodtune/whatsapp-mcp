@@ -40,6 +40,12 @@ func newChatDTOs(chats []store.Chat) []chatDTO {
 	return dtos
 }
 
+// chatsDTO wraps a chat list in an object, since the MCP structured-content
+// field must be a JSON object rather than a bare array.
+type chatsDTO struct {
+	Chats []chatDTO `json:"chats"`
+}
+
 type contactDTO struct {
 	PhoneNumber string `json:"phone_number"`
 	Name        string `json:"name,omitempty"`
@@ -52,6 +58,12 @@ func newContactDTOs(contacts []store.Contact) []contactDTO {
 		dtos = append(dtos, contactDTO{PhoneNumber: c.PhoneNumber, Name: c.Name, JID: c.JID})
 	}
 	return dtos
+}
+
+// contactsDTO wraps a contact list in an object, since the MCP
+// structured-content field must be a JSON object rather than a bare array.
+type contactsDTO struct {
+	Contacts []contactDTO `json:"contacts"`
 }
 
 type messageDTO struct {

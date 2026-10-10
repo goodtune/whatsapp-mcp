@@ -75,16 +75,22 @@ func (s *Server) registerLinkingTools() {
 			"WhatsApp > Linked Devices, or pass phone_number to get an 8-character pairing code to " +
 			"enter under Linked Devices > Link with phone number instead. The QR code and pairing " +
 			"code expire after a short time, so keep calling this tool to get a fresh one until linking succeeds.",
+		Title:       "Link WhatsApp",
+		Annotations: writeAnnotations("Link WhatsApp", false, false, true),
 	}, s.handleLinkWhatsApp)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "whatsapp_status",
 		Description: "Check whether the caller has a WhatsApp number linked to this server, and whether it's currently connected.",
+		Title:       "WhatsApp status",
+		Annotations: readOnlyAnnotations("WhatsApp status"),
 	}, s.handleWhatsAppStatus)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "whatsapp_logout",
 		Description: "Unlink the caller's WhatsApp device from this server. A new number can be linked afterwards with link_whatsapp.",
+		Title:       "WhatsApp logout",
+		Annotations: writeAnnotations("WhatsApp logout", true, true, true),
 	}, s.handleWhatsAppLogout)
 }
 
@@ -94,6 +100,43 @@ func textResult(text string) *mcp.CallToolResult {
 
 func errorResult(text string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}, IsError: true}
+}
+
+// readOnlyAnnotations marks a tool that only reads data and never modifies
+// the caller's WhatsApp account or chats. This is the same convention the
+// vitriolic admin MCP server uses: a tool annotated this way can be run by
+// clients such as Claude and ChatGPT without asking the user to approve
+// every call, since it has no side effects to approve.
+//
+// The title is repeated inside the annotations (as well as on the tool
+// itself) because the Claude connector directory reads annotations.title
+// rather than the tool's top-level title.
+func readOnlyAnnotations(title string) *mcp.ToolAnnotations {
+	f := false
+	return &mcp.ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    true,
+		DestructiveHint: &f,
+		IdempotentHint:  true,
+		OpenWorldHint:   &f,
+	}
+}
+
+// writeAnnotations marks a tool that modifies the caller's WhatsApp account
+// or chats. destructive flags a tool whose effect can't be undone from
+// within WhatsApp (clients should ask the user before running it);
+// idempotent flags a tool that can be repeated with the same arguments
+// without further effect; openWorld flags a tool that also acts on the
+// WhatsApp network itself, rather than only this server's local copy of the
+// caller's data.
+func writeAnnotations(title string, destructive, idempotent, openWorld bool) *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    false,
+		DestructiveHint: &destructive,
+		IdempotentHint:  idempotent,
+		OpenWorldHint:   &openWorld,
+	}
 }
 
 func (s *Server) handleLinkWhatsApp(ctx context.Context, _ *mcp.CallToolRequest, input linkWhatsAppInput) (*mcp.CallToolResult, any, error) {

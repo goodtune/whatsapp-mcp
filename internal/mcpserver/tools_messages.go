@@ -13,11 +13,15 @@ func (s *Server) registerMessageTools() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "list_messages",
 		Description: "Get WhatsApp messages matching the specified criteria, with optional surrounding context.",
+		Title:       "List messages",
+		Annotations: readOnlyAnnotations("List messages"),
 	}, s.handleListMessages)
 
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "get_message_context",
 		Description: "Get the messages immediately before and after a specific WhatsApp message.",
+		Title:       "Get message context",
+		Annotations: readOnlyAnnotations("Get message context"),
 	}, s.handleGetMessageContext)
 }
 
