@@ -1,0 +1,39 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Go unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        run: CGO_ENABLED=0 go build -o whatsapp-mcp ./cmd/whatsapp-mcp
+
+      - name: Verify binary runs
+        run: ./whatsapp-mcp --version
+
+      - name: Verify packaged systemd unit
+        run: |
+          sudo install -m 0755 ./whatsapp-mcp /usr/bin/whatsapp-mcp
+          systemd-analyze verify packaging/linux/whatsapp-mcp.service
+
+      - name: Check GoReleaser config
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: latest
+          args: check
