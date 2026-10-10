@@ -1,0 +1,47 @@
+[Unit]
+Description=whatsapp-mcp — multi-tenant WhatsApp MCP server
+Documentation=https://github.com/goodtune/whatsapp-mcp
+After=network-online.target
+
+# Per-user service: the --ngrok-dotvault/--github-dotvault flags read secrets
+# with this user's cached dotvault login (~/.dotvault-token), and the
+# database, media and WhatsApp session keys live in this user's state
+# directory. As root it would do all of that as root.
+ConditionUser=!root
+
+[Service]
+Type=simple
+
+# Settings come from environment files, most specific first wins. Put
+# JWT_SECRET, GITHUB_ALLOWED_USERS, NGROK_DOMAIN etc. (see the README) in
+# ~/.config/whatsapp-mcp/env, mode 0600: it holds JWT_SECRET.
+# WHATSAPP_MCP_ARGS passes command-line flags, e.g.
+#   WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --github-dotvault whatsapp-mcp/github
+EnvironmentFile=-/etc/sysconfig/whatsapp-mcp
+EnvironmentFile=-%h/.config/whatsapp-mcp/env
+ExecStart=/usr/bin/whatsapp-mcp $WHATSAPP_MCP_ARGS
+
+# %S/whatsapp-mcp is $XDG_STATE_HOME/whatsapp-mcp (~/.local/state/whatsapp-mcp),
+# created by systemd. Running from it puts the default SQLite database and
+# media directory (store/whatsapp-mcp.db, store/media) there, unless
+# DATABASE_URL or MEDIA_DIR say otherwise.
+StateDirectory=whatsapp-mcp
+StateDirectoryMode=0700
+WorkingDirectory=%S/whatsapp-mcp
+
+Restart=on-failure
+RestartSec=30s
+
+StandardOutput=journal
+StandardError=journal
+
+# Only sandbox directives that work in a non-root user manager. The
+# Protect*/Private* knobs need CAP_SETPCAP / CAP_SYS_ADMIN and would
+# fail the spawn at step CAPABILITIES with exit 218.
+NoNewPrivileges=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

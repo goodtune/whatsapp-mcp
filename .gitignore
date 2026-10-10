@@ -3,3 +3,4 @@ whatsapp.log
 claude_desktop_config.json
 /whatsapp-mcp
 .env
+/dist/

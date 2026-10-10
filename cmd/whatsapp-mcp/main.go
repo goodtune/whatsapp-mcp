@@ -37,6 +37,11 @@ import (
 	"github.com/goodtune/whatsapp-mcp/internal/wa"
 )
 
+// version is injected at build time via -ldflags "-X main.version=...". It is
+// the v-stripped semantic version (0.2.0): GoReleaser's {{.Version}} strips
+// the tag's leading "v".
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -60,7 +65,14 @@ func run() error {
 		"Read the GitHub OAuth app's credentials from the \"client_id\" and \"client_secret\" fields of "+
 			"this dotvault secret, instead of GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET. Requires a cached "+
 			"dotvault login; overrides those variables when both are set.")
+	showVersion := fs.Bool("version", false, "Print the version and exit.")
 	fs.Parse(os.Args[1:])
+
+	if *showVersion {
+		fmt.Println(version)
+		return nil
+	}
+	log.Printf("whatsapp-mcp %s", version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

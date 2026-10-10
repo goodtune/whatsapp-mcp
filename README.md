@@ -35,6 +35,41 @@ Users sign in with GitHub, so the server needs a GitHub OAuth app:
 
 The callback URL must match the server's public URL, so the server needs a stable public URL. With ngrok, set `NGROK_DOMAIN` (every ngrok account includes one free static domain).
 
+### From a release
+
+Each [GitHub release](https://github.com/goodtune/whatsapp-mcp/releases) has:
+
+- `.tar.gz` archives for Linux and macOS (amd64 and arm64), and a `.zip` for Windows (amd64). Each holds the `whatsapp-mcp` binary, `README.md` and `LICENSE`.
+- An RPM for Linux (amd64 and arm64). It installs `/usr/bin/whatsapp-mcp` and a systemd user unit.
+- `checksums.txt` with the SHA-256 of every file.
+
+`whatsapp-mcp --version` prints the installed version.
+
+#### Running the RPM as a systemd user service
+
+Like [dotvault](https://github.com/goodtune/dotvault), the RPM's unit runs as a per-user service, not as root: the `--*-dotvault` flags use your own cached dotvault login. Put your settings in `~/.config/whatsapp-mcp/env`, then start the service:
+
+```bash
+sudo dnf install ./whatsapp-mcp-*.rpm
+
+mkdir -p ~/.config/whatsapp-mcp
+cat > ~/.config/whatsapp-mcp/env <<'ENV'
+JWT_SECRET=<a long random string>
+GITHUB_ALLOWED_USERS=your-github-login
+NGROK_DOMAIN=your-domain.ngrok-free.app
+WHATSAPP_MCP_ARGS=--ngrok-dotvault authtoken --github-dotvault whatsapp-mcp/github
+ENV
+chmod 600 ~/.config/whatsapp-mcp/env
+
+systemctl --user enable --now whatsapp-mcp.service
+loginctl enable-linger "$USER"   # keep it running after you log out
+journalctl --user -u whatsapp-mcp -f
+```
+
+`WHATSAPP_MCP_ARGS` holds the command-line flags. The database and media go in `~/.local/state/whatsapp-mcp/store/`, unless you set `DATABASE_URL` or `MEDIA_DIR`. The unit also reads `/etc/sysconfig/whatsapp-mcp`, for settings shared by every user.
+
+The RPM suggests `ffmpeg` but does not require it, because most RPM distributions only ship it from third-party repositories (for example RPM Fusion).
+
 ### With Docker Compose
 
 ```bash
@@ -164,7 +199,10 @@ go build ./...
 go vet ./...
 go test ./...   # runs against a temporary SQLite database
 TEST_DATABASE_URL="postgres://…/empty_db" go test ./...   # same tests against Postgres
+goreleaser release --snapshot --clean   # build every release artifact into dist/
 ```
+
+To release, push a `v`-prefixed tag (for example `v0.2.0`) and publish a GitHub release for it. The `Release` workflow then runs GoReleaser, which builds the archives, RPMs and checksums and attaches them to the release.
 
 The project is a single Go module:
 
