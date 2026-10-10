@@ -3,100 +3,95 @@ package mcpserver
 import (
 	"context"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const recipientDescription = "The recipient - either a phone number with country code but no '+' or other symbols, " +
-	"or a JID (e.g. \"123456789@s.whatsapp.net\" or a group JID like \"123456789@g.us\")"
-
 func (s *Server) registerSendTools() {
-	s.mcp.AddTool(
-		mcp.NewTool("send_message",
-			mcp.WithDescription("Send a WhatsApp text message to a person or group. For group chats use the JID."),
-			mcp.WithString("recipient", mcp.Required(), mcp.Description(recipientDescription)),
-			mcp.WithString("message", mcp.Required(), mcp.Description("The message text to send")),
-		),
-		s.handleSendMessage,
-	)
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "send_message",
+		Description: "Send a WhatsApp text message to a person or group. For group chats use the JID.",
+	}, s.handleSendMessage)
 
-	s.mcp.AddTool(
-		mcp.NewTool("send_file",
-			mcp.WithDescription("Send a file (image, raw audio, video, or document) via WhatsApp. For group chats use the JID."),
-			mcp.WithString("recipient", mcp.Required(), mcp.Description(recipientDescription)),
-			mcp.WithString("media_path", mcp.Required(), mcp.Description("Absolute path, accessible to this server, to the media file to send")),
-		),
-		s.handleSendFile,
-	)
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "send_file",
+		Description: "Send a file (image, raw audio, video, or document) via WhatsApp. For group chats use the JID.",
+	}, s.handleSendFile)
 
-	s.mcp.AddTool(
-		mcp.NewTool("send_audio_message",
-			mcp.WithDescription(
-				"Send an audio file as a playable WhatsApp voice message. For group chats use the JID. "+
-					"Non-Ogg files are converted with ffmpeg; if that fails because ffmpeg isn't installed, use send_file instead.",
-			),
-			mcp.WithString("recipient", mcp.Required(), mcp.Description(recipientDescription)),
-			mcp.WithString("media_path", mcp.Required(), mcp.Description("Absolute path, accessible to this server, to the audio file to send")),
-		),
-		s.handleSendAudioMessage,
-	)
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name: "send_audio_message",
+		Description: "Send an audio file as a playable WhatsApp voice message. For group chats use the JID. " +
+			"Non-Ogg files are converted with ffmpeg; if that fails because ffmpeg isn't installed, use send_file instead.",
+	}, s.handleSendAudioMessage)
 
-	s.mcp.AddTool(
-		mcp.NewTool("download_media",
-			mcp.WithDescription("Download media from a WhatsApp message and get the local file path."),
-			mcp.WithString("message_id", mcp.Required(), mcp.Description("The ID of the message containing the media")),
-			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("The JID of the chat containing the message")),
-		),
-		s.handleDownloadMedia,
-	)
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "download_media",
+		Description: "Download media from a WhatsApp message and get the local file path.",
+	}, s.handleDownloadMedia)
 }
 
-func (s *Server) handleSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	userID, err := currentUserID(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	recipient := req.GetString("recipient", "")
-	if recipient == "" {
-		return jsonResult(sendResultDTO{Success: false, Message: "recipient must be provided"})
-	}
-
-	success, message := s.wa.SendMessage(ctx, userID, recipient, req.GetString("message", ""))
-	return jsonResult(sendResultDTO{Success: success, Message: message})
+type sendMessageInput struct {
+	Recipient string `json:"recipient" jsonschema:"The recipient - either a phone number with country code but no '+' or other symbols, or a JID (e.g. \"123456789@s.whatsapp.net\" or a group JID like \"123456789@g.us\")"`
+	Message   string `json:"message" jsonschema:"The message text to send"`
 }
 
-func (s *Server) handleSendFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) handleSendMessage(ctx context.Context, _ *mcp.CallToolRequest, input sendMessageInput) (*mcp.CallToolResult, sendResultDTO, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorResult(err.Error()), sendResultDTO{}, nil
 	}
 
-	success, message := s.wa.SendFile(ctx, userID, req.GetString("recipient", ""), req.GetString("media_path", ""))
-	return jsonResult(sendResultDTO{Success: success, Message: message})
+	if input.Recipient == "" {
+		return nil, sendResultDTO{Success: false, Message: "recipient must be provided"}, nil
+	}
+
+	success, message := s.wa.SendMessage(ctx, userID, input.Recipient, input.Message)
+	return nil, sendResultDTO{Success: success, Message: message}, nil
 }
 
-func (s *Server) handleSendAudioMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	userID, err := currentUserID(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	success, message := s.wa.SendAudioMessage(ctx, userID, req.GetString("recipient", ""), req.GetString("media_path", ""))
-	return jsonResult(sendResultDTO{Success: success, Message: message})
+type sendFileInput struct {
+	Recipient string `json:"recipient" jsonschema:"The recipient - either a phone number with country code but no '+' or other symbols, or a JID (e.g. \"123456789@s.whatsapp.net\" or a group JID like \"123456789@g.us\")"`
+	MediaPath string `json:"media_path" jsonschema:"Absolute path, accessible to this server, to the media file to send"`
 }
 
-func (s *Server) handleDownloadMedia(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) handleSendFile(ctx context.Context, _ *mcp.CallToolRequest, input sendFileInput) (*mcp.CallToolResult, sendResultDTO, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorResult(err.Error()), sendResultDTO{}, nil
 	}
 
-	messageID := req.GetString("message_id", "")
-	chatJID := req.GetString("chat_jid", "")
+	success, message := s.wa.SendFile(ctx, userID, input.Recipient, input.MediaPath)
+	return nil, sendResultDTO{Success: success, Message: message}, nil
+}
 
-	_, _, filePath, err := s.wa.DownloadMedia(ctx, userID, messageID, chatJID)
+type sendAudioMessageInput struct {
+	Recipient string `json:"recipient" jsonschema:"The recipient - either a phone number with country code but no '+' or other symbols, or a JID (e.g. \"123456789@s.whatsapp.net\" or a group JID like \"123456789@g.us\")"`
+	MediaPath string `json:"media_path" jsonschema:"Absolute path, accessible to this server, to the audio file to send"`
+}
+
+func (s *Server) handleSendAudioMessage(ctx context.Context, _ *mcp.CallToolRequest, input sendAudioMessageInput) (*mcp.CallToolResult, sendResultDTO, error) {
+	userID, err := currentUserID(ctx)
 	if err != nil {
-		return jsonResult(downloadResultDTO{Success: false, Message: err.Error()})
+		return errorResult(err.Error()), sendResultDTO{}, nil
 	}
-	return jsonResult(downloadResultDTO{Success: true, Message: "media downloaded successfully", FilePath: filePath})
+
+	success, message := s.wa.SendAudioMessage(ctx, userID, input.Recipient, input.MediaPath)
+	return nil, sendResultDTO{Success: success, Message: message}, nil
+}
+
+type downloadMediaInput struct {
+	MessageID string `json:"message_id" jsonschema:"The ID of the message containing the media"`
+	ChatJID   string `json:"chat_jid" jsonschema:"The JID of the chat containing the message"`
+}
+
+func (s *Server) handleDownloadMedia(ctx context.Context, _ *mcp.CallToolRequest, input downloadMediaInput) (*mcp.CallToolResult, downloadResultDTO, error) {
+	userID, err := currentUserID(ctx)
+	if err != nil {
+		return errorResult(err.Error()), downloadResultDTO{}, nil
+	}
+
+	_, _, filePath, err := s.wa.DownloadMedia(ctx, userID, input.MessageID, input.ChatJID)
+	if err != nil {
+		return nil, downloadResultDTO{Success: false, Message: err.Error()}, nil
+	}
+	return nil, downloadResultDTO{Success: true, Message: "media downloaded successfully", FilePath: filePath}, nil
 }

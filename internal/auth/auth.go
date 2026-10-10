@@ -1,6 +1,8 @@
-// Package auth implements user accounts, password hashing, JWT session
-// tokens, and the HTTP middleware that authenticates both the REST endpoints
-// and the MCP endpoint.
+// Package auth implements user accounts, password hashing, and the JWT
+// session tokens issued at login. The JWTs double as MCP bearer tokens: the
+// MCP endpoint verifies them via a github.com/modelcontextprotocol/go-sdk/auth
+// TokenVerifier (wired up in cmd/whatsapp-mcp), rather than any bespoke
+// middleware here.
 package auth
 
 import (
@@ -8,7 +10,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -120,8 +121,9 @@ func (s *Service) IssueToken(user *User) (string, error) {
 	return token.SignedString(s.secret)
 }
 
-// VerifyToken parses and validates a JWT, returning the authenticated user id.
-func (s *Service) VerifyToken(tokenString string) (int64, error) {
+// VerifyToken parses and validates a JWT, returning the authenticated user
+// id and the token's expiration time.
+func (s *Service) VerifyToken(tokenString string) (userID int64, expiresAt time.Time, err error) {
 	var c claims
 	token, err := jwt.ParseWithClaims(tokenString, &c, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -130,53 +132,16 @@ func (s *Service) VerifyToken(tokenString string) (int64, error) {
 		return s.secret, nil
 	})
 	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid token: %w", err)
+		return 0, time.Time{}, fmt.Errorf("invalid token: %w", err)
 	}
 
-	var userID int64
 	if _, err := fmt.Sscanf(c.Subject, "%d", &userID); err != nil {
-		return 0, fmt.Errorf("invalid token subject: %w", err)
+		return 0, time.Time{}, fmt.Errorf("invalid token subject: %w", err)
 	}
-	return userID, nil
-}
-
-type contextKey string
-
-const userIDContextKey contextKey = "whatsapp-mcp.user_id"
-
-func WithUserID(ctx context.Context, userID int64) context.Context {
-	return context.WithValue(ctx, userIDContextKey, userID)
-}
-
-// UserIDFromContext returns the authenticated user id injected by Middleware.
-func UserIDFromContext(ctx context.Context) (int64, bool) {
-	id, ok := ctx.Value(userIDContextKey).(int64)
-	return id, ok
-}
-
-// Middleware authenticates requests carrying "Authorization: Bearer <jwt>"
-// and rejects everything else with 401. On success the user id is injected
-// into the request context, where it is visible to downstream HTTP handlers
-// and, for the MCP endpoint, to tool handlers (mcp-go threads the request
-// context through to each tool call).
-func (s *Service) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header := r.Header.Get("Authorization")
-		tokenString, ok := strings.CutPrefix(header, "Bearer ")
-		if !ok || tokenString == "" {
-			http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
-			return
-		}
-
-		userID, err := s.VerifyToken(strings.TrimSpace(tokenString))
-		if err != nil {
-			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
-			return
-		}
-
-		r = r.WithContext(WithUserID(r.Context(), userID))
-		next.ServeHTTP(w, r)
-	})
+	if c.ExpiresAt != nil {
+		expiresAt = c.ExpiresAt.Time
+	}
+	return userID, expiresAt, nil
 }
 
 func isUniqueViolation(err error) bool {

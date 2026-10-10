@@ -7,13 +7,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/mark3labs/mcp-go/server"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/goodtune/whatsapp-mcp/internal/auth"
 	"github.com/goodtune/whatsapp-mcp/internal/config"
@@ -67,11 +69,22 @@ func run() error {
 	}
 
 	mcpSrv := mcpserver.New(waManager, msgStore)
-	httpMCPServer := server.NewStreamableHTTPServer(mcpSrv.MCPServer())
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return mcpSrv.MCPServer()
+	}, nil)
+
+	verifyJWT := func(_ context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+		userID, expiresAt, err := authService.VerifyToken(token)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", mcpauth.ErrInvalidToken, err)
+		}
+		return &mcpauth.TokenInfo{UserID: fmt.Sprintf("%d", userID), Expiration: expiresAt}, nil
+	}
+	requireAuth := mcpauth.RequireBearerToken(verifyJWT, nil)
 
 	mux := http.NewServeMux()
 	httpapi.New(authService).Register(mux)
-	mux.Handle("/mcp", authService.Middleware(httpMCPServer))
+	mux.Handle("/mcp", requireAuth(mcpHandler))
 
 	httpServer := &http.Server{
 		Addr:    cfg.HTTPAddr,
