@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -16,6 +17,8 @@ import (
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.ngrok.com/ngrok"
+	ngrokconfig "golang.ngrok.com/ngrok/config"
 
 	"github.com/goodtune/whatsapp-mcp/internal/auth"
 	"github.com/goodtune/whatsapp-mcp/internal/config"
@@ -86,9 +89,11 @@ func run() error {
 	httpapi.New(authService).Register(mux)
 	mux.Handle("/mcp", requireAuth(mcpHandler))
 
-	httpServer := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: mux,
+	httpServer := &http.Server{Handler: mux}
+
+	listener, err := listen(ctx, cfg)
+	if err != nil {
+		return err
 	}
 
 	go func() {
@@ -98,9 +103,41 @@ func run() error {
 		httpServer.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("whatsapp-mcp listening on %s", cfg.HTTPAddr)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil
+}
+
+// listen opens the address the HTTP/MCP server will be served on: a public
+// ngrok tunnel when NGROK_AUTHTOKEN is configured (so the server can be
+// self-hosted behind NAT or a firewall with no port-forwarding or reverse
+// proxy setup), or a plain local TCP listener otherwise.
+func listen(ctx context.Context, cfg config.Config) (net.Listener, error) {
+	if cfg.NgrokAuthtoken == "" {
+		listener, err := net.Listen("tcp", cfg.HTTPAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on %s: %w", cfg.HTTPAddr, err)
+		}
+		log.Printf("whatsapp-mcp listening on %s", cfg.HTTPAddr)
+		return listener, nil
+	}
+
+	endpointOpts := []ngrokconfig.HTTPEndpointOption{}
+	if cfg.NgrokDomain != "" {
+		endpointOpts = append(endpointOpts, ngrokconfig.WithDomain(cfg.NgrokDomain))
+	}
+	if cfg.NgrokBasicAuthUser != "" {
+		endpointOpts = append(endpointOpts, ngrokconfig.WithBasicAuth(cfg.NgrokBasicAuthUser, cfg.NgrokBasicAuthPass))
+	}
+
+	tunnel, err := ngrok.Listen(ctx,
+		ngrokconfig.HTTPEndpoint(endpointOpts...),
+		ngrok.WithAuthtoken(cfg.NgrokAuthtoken),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start ngrok tunnel: %w", err)
+	}
+	log.Printf("whatsapp-mcp listening on public ngrok tunnel: %s", tunnel.URL())
+	return tunnel, nil
 }

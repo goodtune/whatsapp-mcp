@@ -27,6 +27,13 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a long random string}
       HTTP_ADDR: ":8080"
       MEDIA_DIR: /data/media
+      # Optional: set NGROK_AUTHTOKEN (in .env) to serve on a public ngrok
+      # tunnel instead — see .env.example. The port mapping below is then
+      # only needed for local access; it's harmless to leave either way.
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+      NGROK_BASIC_AUTH_USER: ${NGROK_BASIC_AUTH_USER:-}
+      NGROK_BASIC_AUTH_PASS: ${NGROK_BASIC_AUTH_PASS:-}
     ports:
       - "8080:8080"
     volumes:

@@ -47,6 +47,25 @@ go run ./cmd/whatsapp-mcp
 
 On startup the server creates its own tables (and whatsmeow's) in the target database automatically — no separate migration step is needed.
 
+### Exposing it publicly with ngrok
+
+Both the MCP endpoint and WhatsApp's own pairing flow need to be reachable from wherever your MCP client and phone are, which usually means a public address. If you're self-hosting (no public IP, behind NAT/a firewall, don't want to set up a reverse proxy or TLS certs), set `NGROK_AUTHTOKEN` and the server listens on a public [ngrok](https://ngrok.com) tunnel instead of a local port, using the [ngrok Go SDK](https://github.com/ngrok/ngrok-go) — no separate `ngrok` process or port-forwarding needed:
+
+```bash
+export NGROK_AUTHTOKEN="<your token from https://dashboard.ngrok.com/get-started/your-authtoken>"
+# optional: a reserved domain, so the URL is stable across restarts
+export NGROK_DOMAIN="your-reserved-domain.ngrok-free.app"
+# strongly recommended: protects every request at the ngrok edge, including
+# /api/register, which has no auth of its own
+export NGROK_BASIC_AUTH_USER="someone"
+export NGROK_BASIC_AUTH_PASS="a long random password"
+
+go run ./cmd/whatsapp-mcp
+# whatsapp-mcp listening on public ngrok tunnel: https://your-reserved-domain.ngrok-free.app
+```
+
+`HTTP_ADDR` is ignored while `NGROK_AUTHTOKEN` is set. With Docker Compose, set the same variables in `.env` instead (see `.env.example`); the `ports:` mapping becomes unnecessary (it's harmless to leave it either way).
+
 ## Connecting a client
 
 ### 1. Register and log in
